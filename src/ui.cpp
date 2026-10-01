@@ -22,25 +22,18 @@ void Ui::begin(Renderer& renderer, const InputState& input, float time)
     nextId_ = 1;
     hot_ = 0;
     cursor_ = CursorHint::Arrow;
-    eatClick_ = false;
     if (comboOpen_ && in_->pressed) {
         const bool onBox = contains(comboBox_, in_->x, in_->y);
         const bool onPopup = contains(comboPopup_, in_->x, in_->y);
-        if (onPopup) {
-            eatClick_ = true;
-        } else if (!onBox) {
+        if (!onBox && !onPopup) {
             comboOpen_ = false;
-            eatClick_ = true;
         }
     }
     if (menuOpen_ >= 0 && in_->pressed) {
         const bool onBar = contains(menuBarR_, in_->x, in_->y);
         const bool onPopup = contains(menuPopup_, in_->x, in_->y);
-        if (onPopup) {
-            eatClick_ = true;
-        } else if (!onBar) {
+        if (!onBar && !onPopup) {
             menuOpen_ = -1;
-            eatClick_ = true;
         }
     }
 }
@@ -96,7 +89,7 @@ void Ui::end()
     }
 
     if (in_->released) {
-        eatClick_ = false;
+        pressId_ = 0;
     }
 }
 
@@ -121,13 +114,9 @@ bool Ui::clicked(std::uint32_t id, bool over)
         hot_ = id;
     }
     if (over && wantPress()) {
-        active_ = id;
+        pressId_ = id;
     }
-    const bool c = (active_ == id && in_->released && over && !eatClick_);
-    if (in_->released && active_ == id) {
-        active_ = 0;
-    }
-    return c;
+    return in_->released && pressId_ == id && over;
 }
 
 void Ui::tile(const D2D1_RECT_F& r)
@@ -144,7 +133,7 @@ bool Ui::button(const D2D1_RECT_F& r, std::wstring_view label)
     if (over) {
         face = theme::pal.buttonHover;
     }
-    if (active_ == id && in_->down) {
+    if (pressId_ == id && in_->down) {
         face = theme::pal.buttonPress;
     }
     r_->fillRounded(r, theme::controlRadius, face);
@@ -277,6 +266,9 @@ bool Ui::chip(const D2D1_RECT_F& r, std::wstring_view label, bool selected, D2D1
                                          : theme::pal.tileStroke);
     r_->text(r, label, r_->headingFont(), selected ? accent : theme::pal.secondary,
              DWRITE_TEXT_ALIGNMENT_CENTER);
+    if (over && wantPress()) {
+        return true;
+    }
     return clicked(id, over);
 }
 
@@ -404,7 +396,6 @@ bool Ui::edit(const D2D1_RECT_F& r, EditState& state, std::wstring_view placehol
     if (over && wantPress()) {
         focus_ = id;
         state.caret = caretFromX(r, state.text, in_->x);
-        active_ = id;
     } else if (wantPress() && !over && focus_ == id) {
         focus_ = 0;
     }
@@ -430,9 +421,6 @@ bool Ui::edit(const D2D1_RECT_F& r, EditState& state, std::wstring_view placehol
         }
     }
     r_->popClip();
-    if (in_->released && active_ == id) {
-        active_ = 0;
-    }
     return focused && (!in_->chars.empty() || !in_->keys.empty());
 }
 
@@ -459,7 +447,7 @@ int Ui::tabs(const D2D1_RECT_F& r, const std::vector<std::wstring>& labels, int 
             r_->fill(D2D1::RectF(tab.left + 12, tab.bottom - 2, tab.right - 12, tab.bottom),
                      theme::pal.phosphorCyan);
         }
-        if (clicked(id, over)) {
+        if ((over && wantPress()) || clicked(id, over)) {
             nextSel = i;
         }
     }
@@ -471,7 +459,6 @@ int Ui::tabs(const D2D1_RECT_F& r, const std::vector<std::wstring>& labels, int 
 bool Ui::listBox(const D2D1_RECT_F& r, const std::vector<std::wstring>& items, int& selected,
                  float& scroll)
 {
-    const std::uint32_t id = next();
     const bool over = hit(r);
     r_->fillRounded(r, 6.0f, theme::pal.field);
     r_->strokeRounded(r, 6.0f, theme::pal.tileStroke);
@@ -502,13 +489,9 @@ bool Ui::listBox(const D2D1_RECT_F& r, const std::vector<std::wstring>& items, i
         if (rowOver && wantPress()) {
             selected = i;
             changed = true;
-            active_ = id;
         }
     }
     r_->popClip();
-    if (in_->released && active_ == id) {
-        active_ = 0;
-    }
     return changed;
 }
 

@@ -65,61 +65,70 @@ void Renderer::setFontScale(float scale)
 
 void Renderer::createDevice()
 {
-    UINT flags = D3D11_CREATE_DEVICE_BGRA_SUPPORT;
+    if (!d2dFactory_) {
+        D2D1_FACTORY_OPTIONS opts{};
 #ifdef _DEBUG
-    flags |= D3D11_CREATE_DEVICE_DEBUG;
+        opts.debugLevel = D2D1_DEBUG_LEVEL_INFORMATION;
+#endif
+        checkHr(D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED, __uuidof(ID2D1Factory1), &opts,
+                                  reinterpret_cast<void**>(d2dFactory_.ReleaseAndGetAddressOf())),
+                "D2D1CreateFactory");
+    }
+
+    if (!d3d_) {
+        UINT flags = D3D11_CREATE_DEVICE_BGRA_SUPPORT;
+#ifdef _DEBUG
+        flags |= D3D11_CREATE_DEVICE_DEBUG;
 #endif
 
-    D3D_FEATURE_LEVEL levels[] = {
-        D3D_FEATURE_LEVEL_11_1,
-        D3D_FEATURE_LEVEL_11_0,
-        D3D_FEATURE_LEVEL_10_1,
-        D3D_FEATURE_LEVEL_10_0,
-    };
-    D3D_FEATURE_LEVEL got{};
-    checkHr(D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr, flags, levels,
-                              static_cast<UINT>(sizeof(levels) / sizeof(levels[0])),
-                              D3D11_SDK_VERSION, &d3d_, &got, &d3dContext_),
-            "D3D11CreateDevice");
+        D3D_FEATURE_LEVEL levels[] = {
+            D3D_FEATURE_LEVEL_11_1,
+            D3D_FEATURE_LEVEL_11_0,
+            D3D_FEATURE_LEVEL_10_1,
+            D3D_FEATURE_LEVEL_10_0,
+        };
+        D3D_FEATURE_LEVEL got{};
+        checkHr(D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr, flags, levels,
+                                  static_cast<UINT>(sizeof(levels) / sizeof(levels[0])),
+                                  D3D11_SDK_VERSION, &d3d_, &got, &d3dContext_),
+                "D3D11CreateDevice");
+    }
 
     ComPtr<IDXGIDevice1> dxgiDevice;
     checkHr(d3d_.As(&dxgiDevice), "Query IDXGIDevice1");
     dxgiDevice->SetMaximumFrameLatency(1);
 
-    ComPtr<IDXGIAdapter> adapter;
-    checkHr(dxgiDevice->GetAdapter(&adapter), "GetAdapter");
-    ComPtr<IDXGIFactory2> factory;
-    checkHr(adapter->GetParent(IID_PPV_ARGS(&factory)), "Get DXGI factory");
+    if (!swapChain_) {
+        ComPtr<IDXGIAdapter> adapter;
+        checkHr(dxgiDevice->GetAdapter(&adapter), "GetAdapter");
+        ComPtr<IDXGIFactory2> factory;
+        checkHr(adapter->GetParent(IID_PPV_ARGS(&factory)), "Get DXGI factory");
 
-    DXGI_SWAP_CHAIN_DESC1 desc{};
-    desc.Width = widthPx_;
-    desc.Height = heightPx_;
-    desc.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
-    desc.SampleDesc.Count = 1;
-    desc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
-    desc.BufferCount = 2;
-    desc.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;
-    desc.Scaling = DXGI_SCALING_STRETCH;
-    desc.AlphaMode = DXGI_ALPHA_MODE_IGNORE;
+        DXGI_SWAP_CHAIN_DESC1 desc{};
+        desc.Width = widthPx_;
+        desc.Height = heightPx_;
+        desc.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+        desc.SampleDesc.Count = 1;
+        desc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
+        desc.BufferCount = 2;
+        desc.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;
+        desc.Scaling = DXGI_SCALING_STRETCH;
+        desc.AlphaMode = DXGI_ALPHA_MODE_IGNORE;
 
-    checkHr(factory->CreateSwapChainForHwnd(d3d_.Get(), hwnd_, &desc, nullptr, nullptr, &swapChain_),
-            "CreateSwapChainForHwnd");
-    factory->MakeWindowAssociation(hwnd_, DXGI_MWA_NO_ALT_ENTER);
+        checkHr(factory->CreateSwapChainForHwnd(d3d_.Get(), hwnd_, &desc, nullptr, nullptr,
+                                                &swapChain_),
+                "CreateSwapChainForHwnd");
+        factory->MakeWindowAssociation(hwnd_, DXGI_MWA_NO_ALT_ENTER);
+    }
 
-    D2D1_FACTORY_OPTIONS opts{};
-#ifdef _DEBUG
-    opts.debugLevel = D2D1_DEBUG_LEVEL_INFORMATION;
-#endif
-    checkHr(D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED, __uuidof(ID2D1Factory1), &opts,
-                              reinterpret_cast<void**>(d2dFactory_.ReleaseAndGetAddressOf())),
-            "D2D1CreateFactory");
-
-    ComPtr<IDXGIDevice> dxgiDeviceBase;
-    checkHr(dxgiDevice.As(&dxgiDeviceBase), "IDXGIDevice");
-    checkHr(d2dFactory_->CreateDevice(dxgiDeviceBase.Get(), &d2dDevice_), "CreateDevice D2D");
-    checkHr(d2dDevice_->CreateDeviceContext(D2D1_DEVICE_CONTEXT_OPTIONS_NONE, &dc_),
-            "CreateDeviceContext");
-    checkHr(dc_->CreateSolidColorBrush(D2D1::ColorF(1, 1, 1), &brush_), "CreateSolidColorBrush");
+    if (!d2dDevice_) {
+        ComPtr<IDXGIDevice> dxgiDeviceBase;
+        checkHr(dxgiDevice.As(&dxgiDeviceBase), "IDXGIDevice");
+        checkHr(d2dFactory_->CreateDevice(dxgiDeviceBase.Get(), &d2dDevice_), "CreateDevice D2D");
+        checkHr(d2dDevice_->CreateDeviceContext(D2D1_DEVICE_CONTEXT_OPTIONS_NONE, &dc_),
+                "CreateDeviceContext");
+        checkHr(dc_->CreateSolidColorBrush(D2D1::ColorF(1, 1, 1), &brush_), "CreateSolidColorBrush");
+    }
 }
 
 void Renderer::releaseTarget()
@@ -148,9 +157,23 @@ void Renderer::createTarget()
     dc_->SetDpi(dpi_, dpi_);
 }
 
+void Renderer::recreateGpuStack()
+{
+    releaseTarget();
+    swapChain_.Reset();
+    d2dDevice_.Reset();
+    dc_.Reset();
+    brush_.Reset();
+    d3dContext_.Reset();
+    d3d_.Reset();
+
+    createDevice();
+    createTarget();
+}
+
 void Renderer::resize(UINT pixelWidth, UINT pixelHeight, float dpi)
 {
-    if (!swapChain_) {
+    if (!swapChain_ || inDraw_) {
         return;
     }
 
@@ -159,23 +182,26 @@ void Renderer::resize(UINT pixelWidth, UINT pixelHeight, float dpi)
     heightPx_ = std::max(1u, pixelHeight);
 
     releaseTarget();
-    const HRESULT hr = swapChain_->ResizeBuffers(0, widthPx_, heightPx_, DXGI_FORMAT_UNKNOWN, 0);
+    if (d3dContext_) {
+        d3dContext_->ClearState();
+        d3dContext_->Flush();
+    }
+
+    HRESULT hr = swapChain_->ResizeBuffers(0, widthPx_, heightPx_, DXGI_FORMAT_UNKNOWN, 0);
     if (hr == DXGI_ERROR_DEVICE_REMOVED || hr == DXGI_ERROR_DEVICE_RESET) {
-        d3d_.Reset();
-        d3dContext_.Reset();
-        swapChain_.Reset();
-        d2dDevice_.Reset();
-        dc_.Reset();
-        brush_.Reset();
-        createDevice();
-    } else {
-        checkHr(hr, "ResizeBuffers");
+        recreateGpuStack();
+        return;
+    }
+    if (FAILED(hr)) {
+        recreateGpuStack();
+        return;
     }
     createTarget();
 }
 
 void Renderer::beginDraw()
 {
+    inDraw_ = true;
     dc_->BeginDraw();
     dc_->SetTransform(D2D1::Matrix3x2F::Identity());
 }
@@ -183,12 +209,14 @@ void Renderer::beginDraw()
 void Renderer::endDraw()
 {
     const HRESULT endHr = dc_->EndDraw();
+    inDraw_ = false;
     HRESULT presentHr = swapChain_->Present(1, 0);
     if (endHr == D2DERR_RECREATE_TARGET || presentHr == DXGI_ERROR_DEVICE_REMOVED ||
         presentHr == DXGI_ERROR_DEVICE_RESET) {
         RECT rc{};
         GetClientRect(hwnd_, &rc);
-        resize(static_cast<UINT>(std::max(1L, rc.right)), static_cast<UINT>(std::max(1L, rc.bottom)), dpi_);
+        resize(static_cast<UINT>(std::max(1L, rc.right)), static_cast<UINT>(std::max(1L, rc.bottom)),
+                dpi_);
     } else {
         checkHr(endHr, "EndDraw");
         checkHr(presentHr, "Present");

@@ -98,6 +98,9 @@ struct App {
                                         L"Jul", L"Aug", L"Sep", L"Oct", L"Nov", L"Dec"};
     std::vector<Candle> candles;
     std::chrono::steady_clock::time_point start{std::chrono::steady_clock::now()};
+    bool pendingResize_{};
+    UINT pendingResizeW_{1};
+    UINT pendingResizeH_{1};
 
     App() { resetDemo(); }
 
@@ -252,16 +255,26 @@ struct App {
         }
     }
 
-    void onResize()
+    void queueResize(UINT w, UINT h)
     {
-        RECT rc{};
-        GetClientRect(hwnd, &rc);
-        const UINT w = static_cast<UINT>(std::max(1L, rc.right - rc.left));
-        const UINT h = static_cast<UINT>(std::max(1L, rc.bottom - rc.top));
-        if (w == 0 || h == 0) {
+        if (w < 1 || h < 1) {
+            RECT rc{};
+            GetClientRect(hwnd, &rc);
+            w = static_cast<UINT>(std::max(1L, rc.right - rc.left));
+            h = static_cast<UINT>(std::max(1L, rc.bottom - rc.top));
+        }
+        pendingResizeW_ = w;
+        pendingResizeH_ = h;
+        pendingResize_ = true;
+    }
+
+    void flushResize()
+    {
+        if (!pendingResize_) {
             return;
         }
-        gfx.resize(w, h, static_cast<float>(GetDpiForWindow(hwnd)));
+        pendingResize_ = false;
+        gfx.resize(pendingResizeW_, pendingResizeH_, static_cast<float>(GetDpiForWindow(hwnd)));
     }
 
     void setMouse(float x, float y, bool down)
@@ -504,6 +517,7 @@ struct App {
 
     void frame()
     {
+        flushResize();
         gfx.beginDraw();
         const float w = gfx.widthDips();
         const float h = gfx.heightDips();
@@ -541,9 +555,6 @@ struct App {
         const float rightX = splitX + 8;
         const float rightW = w - rightX - 8;
         const D2D1_RECT_F tabR = rect(rightX, contentTop + 4, rightW, theme::tabHeight);
-        page = ui.tabs(tabR, nav, page);
-        navSel = page;
-
         const D2D1_RECT_F body = rect(rightX, contentTop + theme::tabHeight + 8, rightW,
                                       contentH - theme::tabHeight - 12);
         if (page == 0) {
@@ -555,6 +566,9 @@ struct App {
         } else {
             drawCharts(body);
         }
+
+        page = ui.tabs(tabR, nav, page);
+        navSel = page;
 
         gfx.text(rect(10, h - footer, w - 20, footer - 4),
                  L"C++20  ·  x64  ·  custom DirectX controls, no GDI widgets", gfx.headingFont(),
@@ -668,7 +682,7 @@ struct App {
             return 0;
         case WM_SIZE:
             if (wParam != SIZE_MINIMIZED) {
-                onResize();
+                queueResize(LOWORD(lParam), HIWORD(lParam));
             }
             return 0;
         case WM_DPICHANGED: {
@@ -676,7 +690,7 @@ struct App {
             SetWindowPos(hwnd, nullptr, suggested->left, suggested->top,
                          suggested->right - suggested->left, suggested->bottom - suggested->top,
                          SWP_NOZORDER | SWP_NOACTIVATE);
-            onResize();
+            queueResize(0, 0);
             return 0;
         }
         case WM_GETMINMAXINFO: {

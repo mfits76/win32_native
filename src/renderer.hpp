@@ -46,8 +46,10 @@ private:
     void createTarget();
     void releaseTarget();
     void createFonts();
+    void recreateGpuStack();
 
     HWND hwnd_{};
+    bool inDraw_{};
     float dpi_{96.0f};
     float fontScale_{1.0f};
     UINT widthPx_{1};

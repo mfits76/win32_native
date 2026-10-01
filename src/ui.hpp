@@ -85,7 +85,7 @@ public:
 
 private:
     bool hit(const D2D1_RECT_F& r) const;
-    bool wantPress() const { return in_->pressed && !eatClick_; }
+    bool wantPress() const { return in_->pressed; }
     std::uint32_t next();
     bool clicked(std::uint32_t id, bool over);
     void drawThumb(float x, float cy, bool active, D2D1_COLOR_F accent);
@@ -100,9 +100,9 @@ private:
     std::uint32_t nextId_{1};
     std::uint32_t hot_{};
     std::uint32_t active_{};
+    std::uint32_t pressId_{};
     std::uint32_t focus_{};
     CursorHint cursor_{CursorHint::Arrow};
-    bool eatClick_{};
 
     bool comboOpen_{};
     std::uint32_t comboId_{};
